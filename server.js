@@ -4,11 +4,13 @@ const axios = require('axios')
 
 const app = express()
 
+// rota principal
 app.get('/', (req, res) => {
   res.send('API de Basquete rodando 🏀')
 })
 
-app.get('/suggestions', async (req, res) => {
+// 🔥 ROTA NOVA PRO LOVABLE
+app.get('/gerar', async (req, res) => {
   try {
     const apiKey = process.env.ODDS_API_KEY
 
@@ -46,7 +48,7 @@ app.get('/suggestions', async (req, res) => {
           aposta: `${o.name} vence`,
           odd: o.price,
           probabilidade: prob,
-          hitRate: Math.floor(prob * 10), // simula 0–10 acertos
+          hitRate: Math.floor(prob * 10),
           confianca: Math.round(prob * 100)
         })
       })
@@ -98,6 +100,9 @@ app.get('/suggestions', async (req, res) => {
   }
 })
 
-app.listen(3000, () => {
-  console.log('Servidor rodando em http://localhost:3000')
+// 🔥 PORTA CORRETA PRO RENDER
+const PORT = process.env.PORT || 3000
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`)
 })
