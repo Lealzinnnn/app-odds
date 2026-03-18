@@ -33,7 +33,7 @@ function gerarCombinacoes(arr, tamanho) {
 }
 
 // =======================
-// 🔥 ROTA ORIGINAL (ODDS)
+// 🔥 SUA ROTA NORMAL (OK)
 // =======================
 app.get('/gerar', async (req, res) => {
   try {
@@ -81,7 +81,6 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    // 🔥 FILTRO MELHORADO
     picks = picks
       .filter(p =>
         p.odd >= 1.2 &&
@@ -129,8 +128,7 @@ app.get('/gerar', async (req, res) => {
 
     if (!melhorCombo) {
       return res.json({
-        erro: "Poucas opções com esses filtros",
-        sugestao: "Diminua o hit rate ou a confiança mínima"
+        erro: "Poucas opções com esses filtros"
       })
     }
 
@@ -143,14 +141,14 @@ app.get('/gerar', async (req, res) => {
 })
 
 // =======================
-// 🔥 ROTA DEBUG PROPS (AGORA)
+// 🔥 TESTE API NOVA (CORRETO)
 // =======================
 app.get('/props', async (req, res) => {
   try {
     const apiKey = process.env.SPORTS_API_KEY
 
     const response = await axios.get(
-      'https://api.sportsgameodds.com/v1/events',
+      'https://api.sportsgameodds.com/v1/sports',
       {
         headers: {
           'x-api-key': apiKey
@@ -158,14 +156,17 @@ app.get('/props', async (req, res) => {
       }
     )
 
-    // 🔥 LOG COMPLETO DA API
-    console.log("RESPOSTA COMPLETA:", JSON.stringify(response.data, null, 2))
+    console.log("API OK:", response.data)
 
     res.json(response.data)
 
   } catch (error) {
     console.log("ERRO REAL:", error.response?.data || error.message)
-    res.status(500).send('Erro ao buscar props')
+
+    res.status(500).json({
+      erro: "Erro real da API",
+      detalhe: error.response?.data || error.message
+    })
   }
 })
 
@@ -175,4 +176,4 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`)
 })
 
-console.log("🔥 DEBUG ATIVO NA ROTA /props")
+console.log("🔥 TESTANDO API SPORTSGAMEODDS")
