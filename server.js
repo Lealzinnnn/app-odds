@@ -1,11 +1,10 @@
 require('dotenv').config()
 const express = require('express')
 const axios = require('axios')
-const cors = require('cors') // 🔥 NOVO
+const cors = require('cors')
 
 const app = express()
 
-// 🔥 LIBERA ACESSO EXTERNO
 app.use(cors())
 
 app.get('/', (req, res) => {
@@ -56,8 +55,11 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
+    // 🔥 FILTRO DINÂMICO (AGORA FUNCIONA PRA QUALQUER ODD)
+    const maxOddPermitida = targetOdd * 1.5
+
     picks = picks
-      .filter(p => p.odd >= 1.3 && p.odd <= 2.5)
+      .filter(p => p.odd >= 1.2 && p.odd <= maxOddPermitida)
       .sort((a, b) => a.odd - b.odd)
 
     let melhorCombo = null
@@ -66,8 +68,14 @@ app.get('/gerar', async (req, res) => {
     for (let i = 0; i < picks.length; i++) {
       for (let j = i + 1; j < picks.length; j++) {
         for (let k = j + 1; k < picks.length; k++) {
+
           const combo = [picks[i], picks[j], picks[k]]
           const oddTotal = combo.reduce((acc, p) => acc * p.odd, 1)
+
+          // 🔥 MARGEM INTELIGENTE
+          const margem = Math.max(0.3, targetOdd * 0.2)
+
+          if (oddTotal > targetOdd + margem) continue
 
           const diff = Math.abs(targetOdd - oddTotal)
 
@@ -108,4 +116,4 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`)
 })
 
-console.log("deploy com CORS 🚀")
+console.log("🔥 API dinâmica pronta")
