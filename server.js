@@ -32,6 +32,9 @@ function gerarCombinacoes(arr, tamanho) {
   return resultado
 }
 
+// =======================
+// 🔥 ROTA ORIGINAL (ODDS)
+// =======================
 app.get('/gerar', async (req, res) => {
   try {
     const apiKey = process.env.ODDS_API_KEY
@@ -72,25 +75,24 @@ app.get('/gerar', async (req, res) => {
           aposta: `${o.name} vence`,
           odd: o.price,
           probabilidade: prob,
-          hitRate: Math.floor(prob * 10), // 0–10
-          confianca: Math.round(prob * 100) // %
+          hitRate: Math.floor(prob * 10),
+          confianca: Math.round(prob * 100)
         })
       })
     })
 
-    // 🔥 FILTRO INTELIGENTE (AGORA RESPEITA OS SLIDERS)
-    const maxOddPermitida = targetOdd * 1.5
-
+    // 🔥 FILTRO MELHORADO
     picks = picks
       .filter(p =>
         p.odd >= 1.2 &&
-        p.odd <= maxOddPermitida &&
         (p.hitRate * 10) >= minHitRate &&
         p.confianca >= minConfidence
       )
       .sort((a, b) => b.confianca - a.confianca)
 
-    // 🔥 GERA COMBINAÇÕES DINÂMICAS
+    // 🔥 LIMITA PRA NÃO EXPLODIR
+    picks = picks.slice(0, 12)
+
     const combinacoes = gerarCombinacoes(picks, numLinhas)
 
     let melhorCombo = null
@@ -99,7 +101,7 @@ app.get('/gerar', async (req, res) => {
     for (const combo of combinacoes) {
       const oddTotal = combo.reduce((acc, p) => acc * p.odd, 1)
 
-      const margem = Math.max(0.3, targetOdd * 0.2)
+      const margem = Math.max(0.5, targetOdd * 0.25)
 
       if (oddTotal > targetOdd + margem) continue
 
@@ -126,11 +128,89 @@ app.get('/gerar', async (req, res) => {
       }
     }
 
+    // 🔥 PROTEÇÃO DE ERRO
+    if (!melhorCombo) {
+      return res.json({
+        erro: "Poucas opções com esses filtros",
+        sugestao: "Diminua o hit rate ou a confiança mínima"
+      })
+    }
+
     res.json(melhorCombo)
 
   } catch (error) {
     console.log(error.response?.data || error.message)
     res.status(500).send('Erro ao gerar sugestões')
+  }
+})
+
+// =======================
+// 🔥 NOVA ROTA (PROPS)
+// =======================
+app.get('/props', async (req, res) => {
+  try {
+    const apiKey = process.env.SPORTS_API_KEY
+
+    const response = await axios.get(
+      'https://api.sportsgameodds.com/v1/events',
+      {
+        headers: {
+          'x-api-key': apiKey
+        },
+        params: {
+          sport: 'basketball',
+          league: 'nba'
+        }
+      }
+    )
+
+    const eventos = response.data.data || []
+
+    let picks = []
+
+    eventos.slice(0, 5).forEach(evento => {
+      const jogadores = evento.players || []
+
+      jogadores.forEach(jogador => {
+        const stats = jogador.stats || {}
+
+        if (stats.points) {
+          picks.push({
+            jogador: jogador.name,
+            tipo: "Pontos",
+            linha: stats.points,
+            odd: 1.8
+          })
+        }
+
+        if (stats.assists) {
+          picks.push({
+            jogador: jogador.name,
+            tipo: "Assistências",
+            linha: stats.assists,
+            odd: 1.7
+          })
+        }
+
+        if (stats.rebounds) {
+          picks.push({
+            jogador: jogador.name,
+            tipo: "Rebotes",
+            linha: stats.rebounds,
+            odd: 1.9
+          })
+        }
+      })
+    })
+
+    res.json({
+      total: picks.length,
+      picks: picks.slice(0, 10)
+    })
+
+  } catch (error) {
+    console.log(error.response?.data || error.message)
+    res.status(500).send('Erro ao buscar props')
   }
 })
 
@@ -140,4 +220,4 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`)
 })
 
-console.log("🔥 API COMPLETA COM FILTROS")
+console.log("🔥 API COMPLETA COM PROPS + ODDS")
