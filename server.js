@@ -12,7 +12,7 @@ app.get('/', (req, res) => {
 })
 
 // =======================
-// 🔥 BUSCAR JOGOS NBA (AGORA CERTO)
+// 🔥 BUSCAR NBA COM ODDS + PROPS
 // =======================
 app.get('/props', async (req, res) => {
   try {
@@ -21,11 +21,11 @@ app.get('/props', async (req, res) => {
     const response = await axios.get(
       'https://api.sportsgameodds.com/v2/events',
       {
-        headers: {
-          'x-api-key': apiKey
-        },
         params: {
-          leagueID: 'NBA' // 🔥 ESSENCIAL
+          apiKey: apiKey, // 🔥 IMPORTANTE: aqui vai como query
+          leagueID: 'NBA',
+          oddsAvailable: true,
+          limit: 5
         }
       }
     )
@@ -34,7 +34,7 @@ app.get('/props', async (req, res) => {
 
     res.json({
       total: eventos.length,
-      eventos: eventos.slice(0, 5)
+      eventos: eventos
     })
 
   } catch (error) {
@@ -53,4 +53,4 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`)
 })
 
-console.log("🔥 BUSCANDO NBA REAL")
+console.log("🔥 AGORA COM ODDS + PROPS REAL")
