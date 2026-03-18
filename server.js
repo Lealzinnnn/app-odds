@@ -90,7 +90,6 @@ app.get('/gerar', async (req, res) => {
       )
       .sort((a, b) => b.confianca - a.confianca)
 
-    // 🔥 LIMITA PRA NÃO EXPLODIR
     picks = picks.slice(0, 12)
 
     const combinacoes = gerarCombinacoes(picks, numLinhas)
@@ -128,7 +127,6 @@ app.get('/gerar', async (req, res) => {
       }
     }
 
-    // 🔥 PROTEÇÃO DE ERRO
     if (!melhorCombo) {
       return res.json({
         erro: "Poucas opções com esses filtros",
@@ -145,7 +143,7 @@ app.get('/gerar', async (req, res) => {
 })
 
 // =======================
-// 🔥 NOVA ROTA (PROPS)
+// 🔥 ROTA DEBUG PROPS (AGORA)
 // =======================
 app.get('/props', async (req, res) => {
   try {
@@ -156,60 +154,17 @@ app.get('/props', async (req, res) => {
       {
         headers: {
           'x-api-key': apiKey
-        },
-        params: {
-          sport: 'basketball',
-          league: 'nba'
         }
       }
     )
 
-    const eventos = response.data.data || []
+    // 🔥 LOG COMPLETO DA API
+    console.log("RESPOSTA COMPLETA:", JSON.stringify(response.data, null, 2))
 
-    let picks = []
-
-    eventos.slice(0, 5).forEach(evento => {
-      const jogadores = evento.players || []
-
-      jogadores.forEach(jogador => {
-        const stats = jogador.stats || {}
-
-        if (stats.points) {
-          picks.push({
-            jogador: jogador.name,
-            tipo: "Pontos",
-            linha: stats.points,
-            odd: 1.8
-          })
-        }
-
-        if (stats.assists) {
-          picks.push({
-            jogador: jogador.name,
-            tipo: "Assistências",
-            linha: stats.assists,
-            odd: 1.7
-          })
-        }
-
-        if (stats.rebounds) {
-          picks.push({
-            jogador: jogador.name,
-            tipo: "Rebotes",
-            linha: stats.rebounds,
-            odd: 1.9
-          })
-        }
-      })
-    })
-
-    res.json({
-      total: picks.length,
-      picks: picks.slice(0, 10)
-    })
+    res.json(response.data)
 
   } catch (error) {
-    console.log(error.response?.data || error.message)
+    console.log("ERRO REAL:", error.response?.data || error.message)
     res.status(500).send('Erro ao buscar props')
   }
 })
@@ -220,4 +175,4 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`)
 })
 
-console.log("🔥 API COMPLETA COM PROPS + ODDS")
+console.log("🔥 DEBUG ATIVO NA ROTA /props")
