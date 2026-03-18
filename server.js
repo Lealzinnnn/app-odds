@@ -12,16 +12,14 @@ app.get('/', (req, res) => {
 })
 
 // =======================
-// 🔥 TESTE API NOVA (DEBUG REAL)
+// 🔥 TESTE API SPORTSGAMEODDS (V2 CORRETO)
 // =======================
 app.get('/props', async (req, res) => {
   try {
     const apiKey = process.env.SPORTS_API_KEY
 
-    console.log("API KEY:", apiKey)
-
     const response = await axios.get(
-      'https://api.sportsgameodds.com/v1/sports',
+      'https://api.sportsgameodds.com/v2/sports',
       {
         headers: {
           'x-api-key': apiKey
@@ -32,7 +30,7 @@ app.get('/props', async (req, res) => {
     res.json(response.data)
 
   } catch (error) {
-    console.log("ERRO COMPLETO:", error.response?.data || error.message)
+    console.log("ERRO REAL:", error.response?.data || error.message)
 
     res.status(500).json({
       erro: "Erro real da API",
@@ -47,4 +45,4 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`)
 })
 
-console.log("🔥 DEBUG TOTAL ATIVO")
+console.log("🔥 USANDO API V2")
