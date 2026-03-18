@@ -12,7 +12,7 @@ app.get('/', (req, res) => {
 })
 
 // =======================
-// 🔥 BUSCAR JOGOS NBA
+// 🔥 BUSCAR JOGOS NBA (AGORA CERTO)
 // =======================
 app.get('/props', async (req, res) => {
   try {
@@ -25,7 +25,7 @@ app.get('/props', async (req, res) => {
           'x-api-key': apiKey
         },
         params: {
-          sportID: 'BASKETBALL'
+          leagueID: 'NBA' // 🔥 ESSENCIAL
         }
       }
     )
@@ -34,7 +34,7 @@ app.get('/props', async (req, res) => {
 
     res.json({
       total: eventos.length,
-      eventos: eventos.slice(0, 5) // só 5 pra teste
+      eventos: eventos.slice(0, 5)
     })
 
   } catch (error) {
@@ -53,4 +53,4 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`)
 })
 
-console.log("🔥 BUSCANDO EVENTOS NBA")
+console.log("🔥 BUSCANDO NBA REAL")
