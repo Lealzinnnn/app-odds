@@ -1,15 +1,17 @@
 require('dotenv').config()
 const express = require('express')
 const axios = require('axios')
+const cors = require('cors') // 🔥 NOVO
 
 const app = express()
 
-// rota principal
+// 🔥 LIBERA ACESSO EXTERNO
+app.use(cors())
+
 app.get('/', (req, res) => {
   res.send('API de Basquete rodando 🏀')
 })
 
-// 🔥 ROTA NOVA PRO LOVABLE
 app.get('/gerar', async (req, res) => {
   try {
     const apiKey = process.env.ODDS_API_KEY
@@ -100,12 +102,10 @@ app.get('/gerar', async (req, res) => {
   }
 })
 
-// 🔥 PORTA CORRETA PRO RENDER
 const PORT = process.env.PORT || 3000
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`)
 })
 
-// 🔥 ALTERAÇÃO FORÇADA (IMPORTANTE)
-console.log("deploy atualizado v3 🚀")
+console.log("deploy com CORS 🚀")
