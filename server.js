@@ -34,16 +34,6 @@ function gerarCombinacoes(arr, tamanho) {
 }
 
 // =========================
-// 🔥 CONVERTE ODDS AMERICANA
-// =========================
-function converterOdds(american) {
-  const odd = parseFloat(american)
-
-  if (odd > 0) return (odd / 100) + 1
-  return (100 / Math.abs(odd)) + 1
-}
-
-// =========================
 // 🔥 ROTA PRINCIPAL
 // =========================
 app.get('/gerar', async (req, res) => {
@@ -51,8 +41,10 @@ app.get('/gerar', async (req, res) => {
     const targetOdd = parseFloat(req.query.targetOdd) || 3
     const numLinhas = parseInt(req.query.numLinhas) || 3
 
+    let picks = []
+
     // =========================
-    // 🟢 1. ODDS REAIS (TIMES)
+    // 🟢 ODDS REAIS (TIMES)
     // =========================
     const oddsResponse = await axios.get(
       'https://api.the-odds-api.com/v4/sports/basketball_nba/odds/',
@@ -65,8 +57,6 @@ app.get('/gerar', async (req, res) => {
         }
       }
     )
-
-    let picks = []
 
     oddsResponse.data.forEach(jogo => {
       const book = jogo.bookmakers[0]
@@ -81,13 +71,13 @@ app.get('/gerar', async (req, res) => {
           jogo: `${jogo.home_team} vs ${jogo.away_team}`,
           aposta: `${o.name} vence`,
           odd: o.price,
-          confianca: 65 // base
+          confianca: 65
         })
       })
     })
 
     // =========================
-    // 🟡 2. PLAYER PROPS (INTELIGENTE)
+    // 🟡 PLAYER PROPS (CORRIGIDO)
     // =========================
     const statsResponse = await axios.get(
       'https://api.sportsgameodds.com/v2/events',
@@ -102,12 +92,14 @@ app.get('/gerar', async (req, res) => {
     const eventos = statsResponse.data.data || []
 
     eventos.forEach(evento => {
-      const players = evento.stats?.playerStats || {}
+      const players = evento.players || {}
 
       Object.values(players).forEach(player => {
 
+        if (!player.name) return
+
         // 🔥 PONTOS
-        if (player.points >= 20) {
+        if (player.points && player.points >= 20) {
           picks.push({
             tipo: "player",
             jogo: evento.teams?.map(t => t.name).join(' vs '),
@@ -118,7 +110,7 @@ app.get('/gerar', async (req, res) => {
         }
 
         // 🔥 ASSISTÊNCIAS
-        if (player.assists >= 5) {
+        if (player.assists && player.assists >= 5) {
           picks.push({
             tipo: "player",
             jogo: evento.teams?.map(t => t.name).join(' vs '),
@@ -129,7 +121,7 @@ app.get('/gerar', async (req, res) => {
         }
 
         // 🔥 REBOTES
-        if (player.rebounds >= 8) {
+        if (player.rebounds && player.rebounds >= 8) {
           picks.push({
             tipo: "player",
             jogo: evento.teams?.map(t => t.name).join(' vs '),
@@ -143,15 +135,15 @@ app.get('/gerar', async (req, res) => {
     })
 
     // =========================
-    // 🔥 ORGANIZA PICKS
+    // 🔥 FILTRAR PICKS
     // =========================
     picks = picks
       .filter(p => p.odd >= 1.4 && p.odd <= 3)
       .sort((a, b) => b.confianca - a.confianca)
-      .slice(0, 20)
+      .slice(0, 25)
 
     // =========================
-    // 🔥 COMBINAÇÕES
+    // 🔥 GERAR COMBINAÇÕES
     // =========================
     const combinacoes = gerarCombinacoes(picks, numLinhas)
 
