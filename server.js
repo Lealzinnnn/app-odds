@@ -12,28 +12,36 @@ app.get('/', (req, res) => {
 })
 
 // =======================
-// 🔥 TESTE API SPORTSGAMEODDS (V2 CORRETO)
+// 🔥 BUSCAR JOGOS NBA
 // =======================
 app.get('/props', async (req, res) => {
   try {
     const apiKey = process.env.SPORTS_API_KEY
 
     const response = await axios.get(
-      'https://api.sportsgameodds.com/v2/sports',
+      'https://api.sportsgameodds.com/v2/events',
       {
         headers: {
           'x-api-key': apiKey
+        },
+        params: {
+          sportID: 'BASKETBALL'
         }
       }
     )
 
-    res.json(response.data)
+    const eventos = response.data.data || []
+
+    res.json({
+      total: eventos.length,
+      eventos: eventos.slice(0, 5) // só 5 pra teste
+    })
 
   } catch (error) {
     console.log("ERRO REAL:", error.response?.data || error.message)
 
     res.status(500).json({
-      erro: "Erro real da API",
+      erro: "Erro ao buscar eventos",
       detalhe: error.response?.data || error.message
     })
   }
@@ -45,4 +53,4 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`)
 })
 
-console.log("🔥 USANDO API V2")
+console.log("🔥 BUSCANDO EVENTOS NBA")
