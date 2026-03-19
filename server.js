@@ -23,23 +23,36 @@ function fixOdd(num) {
   return Number(parseFloat(num).toFixed(2))
 }
 
+// 🔒 evitar repetir jogo
+function evitarMesmoJogo(combo) {
+  const set = new Set()
+  for (const p of combo) {
+    if (set.has(p.jogo)) return false
+    set.add(p.jogo)
+  }
+  return true
+}
+
+// pegar odds dos times
 function getBestH2H(bookmakers) {
   let best = []
 
   if (!Array.isArray(bookmakers)) return best
 
   bookmakers.forEach(book => {
-    if (!book || !Array.isArray(book.markets)) return
+    const market = book.markets?.find(m => m.key === 'h2h')
+    if (!market) return
 
-    const market = book.markets.find(m => m.key === 'h2h')
-    if (!market || !Array.isArray(market.outcomes)) return
-
-    market.outcomes.forEach(o => {
+    market.outcomes?.forEach(o => {
       if (!o.name || !o.price) return
 
+      // 🔥 filtra odds boas
+      if (o.price < 1.3 || o.price > 3) return
+
       best.push({
-        name: o.name,
-        price: o.price
+        tipo: "time",
+        aposta: `${o.name} vence`,
+        odd: fixOdd(o.price)
       })
     })
   })
@@ -47,6 +60,7 @@ function getBestH2H(bookmakers) {
   return best
 }
 
+// rota teste
 app.get('/', (req, res) => {
   res.send("API rodando 🚀")
 })
@@ -56,12 +70,11 @@ app.get('/gerar', async (req, res) => {
     const apiKey = process.env.ODDS_API_KEY
 
     if (!apiKey) {
-      return res.status(500).json({
-        erro: "API KEY não configurada"
-      })
+      return res.status(500).json({ erro: "API KEY não configurada" })
     }
 
     const numLinhas = parseInt(req.query.numLinhas) || 3
+    const targetOdd = parseFloat(req.query.targetOdd) || 3
 
     const oddsResponse = await axios.get(
       'https://api.the-odds-api.com/v4/sports/basketball_nba/odds/',
@@ -76,7 +89,7 @@ app.get('/gerar', async (req, res) => {
     )
 
     const jogos = Array.isArray(oddsResponse.data)
-      ? oddsResponse.data.slice(0, 6)
+      ? oddsResponse.data.slice(0, 8)
       : []
 
     let picks = []
@@ -87,10 +100,8 @@ app.get('/gerar', async (req, res) => {
 
       odds.forEach(o => {
         picks.push({
-          tipo: "time",
-          jogo: `${jogo.home_team} vs ${jogo.away_team}`,
-          aposta: `${o.name} vence`,
-          odd: fixOdd(o.price)
+          ...o,
+          jogo: `${jogo.home_team} vs ${jogo.away_team}`
         })
       })
     })
@@ -113,19 +124,18 @@ app.get('/gerar', async (req, res) => {
     )
 
     propsRequests.forEach((resp, idx) => {
-      if (!resp || !resp.data || !Array.isArray(resp.data.bookmakers)) return
+      if (!resp?.data?.bookmakers) return
 
       const jogo = jogos[idx]
 
       resp.data.bookmakers.forEach(book => {
-        if (!book || !Array.isArray(book.markets)) return
-
-        book.markets.forEach(market => {
-          if (!market || !Array.isArray(market.outcomes)) return
-
-          market.outcomes.forEach(o => {
+        book.markets?.forEach(market => {
+          market.outcomes?.forEach(o => {
 
             if (!o.description || !o.point || !o.price) return
+
+            // 🔥 filtro de qualidade
+            if (o.price < 1.4 || o.price > 2.5) return
 
             const overUnder = o.name?.toLowerCase().includes("over") ? "Over" : "Under"
 
@@ -143,26 +153,37 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    if (!picks.length) {
-      return res.json([])
-    }
+    if (!picks.length) return res.json([])
 
-    picks = picks.sort(() => Math.random() - 0.5)
-
+    // 🔥 gerar combinações inteligentes
     const resultados = []
 
-    for (let i = 0; i < 5; i++) {
-      const combo = picks.slice(i, i + numLinhas)
+    for (let i = 0; i < 200; i++) {
+      const embaralhado = picks.sort(() => Math.random() - 0.5)
+      const combo = embaralhado.slice(0, numLinhas)
+
+      if (!evitarMesmoJogo(combo)) continue
 
       const oddTotal = combo.reduce((acc, p) => acc * p.odd, 1)
 
+      const diff = Math.abs(targetOdd - oddTotal)
+
       resultados.push({
         odd_total: fixOdd(oddTotal),
+        diff,
         picks: combo
       })
     }
 
-    res.json(resultados)
+    // 🔥 escolhe as mais próximas da odd desejada
+    resultados.sort((a, b) => a.diff - b.diff)
+
+    const final = resultados.slice(0, 5).map(r => ({
+      odd_total: r.odd_total,
+      picks: r.picks
+    }))
+
+    res.json(final)
 
   } catch (error) {
     console.log("🔥 ERRO:", error.response?.data || error.message)
