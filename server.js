@@ -33,7 +33,6 @@ function evitarMesmoJogo(combo) {
   return true
 }
 
-// 🔥 fallback inteligente de casa de aposta
 function escolherBookmaker(lista) {
   if (!lista || !lista.length) return null
   return lista.find(b => b.key === PREFERRED_BOOK) || lista[0]
@@ -138,7 +137,9 @@ app.get('/gerar', async (req, res) => {
 
     const resultados = []
 
-    // 🔥 UM COMBO POR JOGO
+    // ======================
+    // GERAR COMBINAÇÕES
+    // ======================
     for (let i = 0; i < timePicks.length; i++) {
 
       const time = timePicks[i]
@@ -163,23 +164,38 @@ app.get('/gerar', async (req, res) => {
     }
 
     // ======================
-    // 🎯 FILTRO DE ODD (±1)
+    // 🎯 FILTRO DE ODD INTELIGENTE
     // ======================
-    const minOdd = targetOdd - 1
-    const maxOdd = targetOdd + 1
 
-    const filtrados = resultados.filter(r =>
+    let minOdd = targetOdd - 1
+    let maxOdd = targetOdd + 1
+
+    let filtrados = resultados.filter(r =>
       r.odd_total >= minOdd && r.odd_total <= maxOdd
     )
+
+    // 🔥 tenta ampliar se não achar
+    if (filtrados.length < 3) {
+      minOdd = targetOdd - 2
+      maxOdd = targetOdd + 2
+
+      filtrados = resultados.filter(r =>
+        r.odd_total >= minOdd && r.odd_total <= maxOdd
+      )
+    }
+
+    // ❌ NÃO INVENTA RESULTADO
+    if (filtrados.length === 0) {
+      return res.status(200).json({
+        erro: "Não foi possível encontrar combinações próximas da odd solicitada"
+      })
+    }
 
     filtrados.sort((a, b) =>
       Math.abs(a.odd_total - targetOdd) - Math.abs(b.odd_total - targetOdd)
     )
 
-    // fallback caso não tenha suficiente
-    const finais = filtrados.length >= 3 ? filtrados : resultados
-
-    res.json(finais.slice(0, 5))
+    res.json(filtrados.slice(0, 5))
 
   } catch (error) {
     console.log(error.response?.data || error.message)
