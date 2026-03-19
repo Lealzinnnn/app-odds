@@ -3,8 +3,7 @@ const express = require('express')
 const axios = require('axios')
 const cors = require('cors')
 
-const app = express()   // 🔥 TEM QUE VIR PRIMEIRO
-
+const app = express()
 app.use(cors())
 
 const PORT = process.env.PORT || 3000
@@ -42,6 +41,7 @@ function getBestH2H(bookmakers) {
   return best
 }
 
+// TESTE
 app.get('/', (req, res) => {
   res.send("API rodando 🚀")
 })
@@ -50,8 +50,11 @@ app.get('/gerar', async (req, res) => {
   try {
     const apiKey = process.env.ODDS_API_KEY
 
+    // 🔥 DEBUG API KEY
     if (!apiKey) {
-      return res.status(500).json({ error: "API KEY não configurada" })
+      return res.status(500).json({
+        erro: "API KEY não configurada no Render"
+      })
     }
 
     const numLinhas = parseInt(req.query.numLinhas) || 3
@@ -99,7 +102,10 @@ app.get('/gerar', async (req, res) => {
               oddsFormat: 'decimal'
             }
           }
-        ).catch(() => null)
+        ).catch(err => {
+          console.log("Erro props:", err.message)
+          return null
+        })
       )
     )
 
@@ -130,10 +136,12 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    if (picks.length < 5) {
+    // 🔥 GARANTE QUE NÃO QUEBRE
+    if (!picks.length) {
       return res.json([])
     }
 
+    // mistura
     picks = picks.sort(() => Math.random() - 0.5)
 
     const resultados = []
@@ -152,8 +160,11 @@ app.get('/gerar', async (req, res) => {
     res.json(resultados)
 
   } catch (error) {
-    console.log("ERRO:", error.response?.data || error.message)
-    res.status(500).send('Erro ao gerar sugestões')
+    console.log("🔥 ERRO DETALHADO:", error.response?.data || error.message)
+
+    res.status(500).json({
+      erro: error.response?.data || error.message
+    })
   }
 })
 
