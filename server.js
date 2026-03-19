@@ -23,6 +23,7 @@ function fixOdd(num) {
   return Number(parseFloat(num).toFixed(2))
 }
 
+// evitar repetir jogo
 function evitarMesmoJogo(combo) {
   const set = new Set()
   for (const p of combo) {
@@ -37,9 +38,14 @@ app.get('/gerar', async (req, res) => {
 
     const apiKey = process.env.ODDS_API_KEY
     const numLinhas = parseInt(req.query.numLinhas) || 3
-    const targetOdd = parseFloat(req.query.targetOdd) || 3
+    const targetOdd = parseFloat(req.query.targetOdd) || 5.5
 
-    // 🔥 BUSCA TODOS OS JOGOS DISPONÍVEIS
+    const MIN_ODD = targetOdd - 1
+    const MAX_ODD = targetOdd + 1
+
+    // =========================
+    // 🔥 TODOS OS JOGOS
+    // =========================
     const oddsResponse = await axios.get(
       'https://api.the-odds-api.com/v4/sports/basketball_nba/odds/',
       {
@@ -54,21 +60,20 @@ app.get('/gerar', async (req, res) => {
 
     const jogos = oddsResponse.data || []
 
-    let timePicks = []
-    let playerPicks = []
+    let picks = []
 
-    // =====================
-    // 🟢 TIMES (FORTE)
-    // =====================
+    // =========================
+    // 🟢 TIMES
+    // =========================
     jogos.forEach(jogo => {
       jogo.bookmakers?.forEach(book => {
         const market = book.markets?.find(m => m.key === 'h2h')
         if (!market) return
 
         market.outcomes?.forEach(o => {
-          if (!o.price || !o.name) return
+          if (!o.name || !o.price) return
 
-          timePicks.push({
+          picks.push({
             tipo: "time",
             jogo: `${jogo.home_team} vs ${jogo.away_team}`,
             aposta: `${o.name} vence`,
@@ -78,9 +83,9 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    // =====================
-    // 🔵 PLAYER PROPS (COMPLETO)
-    // =====================
+    // =========================
+    // 🔵 PLAYER PROPS (TODOS)
+    // =========================
     const propsRequests = await Promise.all(
       jogos.map(jogo =>
         axios.get(
@@ -110,7 +115,7 @@ app.get('/gerar', async (req, res) => {
 
             const overUnder = o.name.toLowerCase().includes("over") ? "Over" : "Under"
 
-            playerPicks.push({
+            picks.push({
               tipo: "player",
               jogo: `${jogo.home_team} vs ${jogo.away_team}`,
               aposta: `${o.description} ${traduzOU(overUnder)} ${o.point} ${formatStat(market.key)}`,
@@ -124,51 +129,43 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    if (!timePicks.length && !playerPicks.length) {
-      return res.json([])
-    }
-
-    // 🔥 LIMITA PRA NÃO FICAR LIXO
-    timePicks = timePicks.slice(0, 20)
-    playerPicks = playerPicks.slice(0, 40)
+    if (!picks.length) return res.json([])
 
     const resultados = []
 
-    // =====================
-    // 🧠 ENGINE INTELIGENTE
-    // =====================
-    for (let i = 0; i < 200; i++) {
+    // =========================
+    // 🧠 ENGINE COM CONTROLE DE ODD
+    // =========================
+    for (let i = 0; i < 500; i++) {
 
-      let combo = []
-
-      // 🔥 SEMPRE COMEÇA COM TIME
-      const time = timePicks[Math.floor(Math.random() * timePicks.length)]
-      combo.push(time)
-
-      // 🔥 COMPLETA COM PLAYERS
-      while (combo.length < numLinhas) {
-        const player = playerPicks[Math.floor(Math.random() * playerPicks.length)]
-        combo.push(player)
-      }
+      const embaralhado = [...picks].sort(() => Math.random() - 0.5)
+      const combo = embaralhado.slice(0, numLinhas)
 
       if (!evitarMesmoJogo(combo)) continue
 
       const oddTotal = combo.reduce((acc, p) => acc * p.odd, 1)
-      const diff = Math.abs(targetOdd - oddTotal)
+
+      // 🔥 FILTRO DE ODD INTELIGENTE
+      if (oddTotal < MIN_ODD || oddTotal > MAX_ODD) continue
 
       resultados.push({
         odd_total: fixOdd(oddTotal),
-        diff,
         picks: combo
       })
     }
 
-    resultados.sort((a, b) => a.diff - b.diff)
+    // fallback (caso não encontre dentro da faixa)
+    if (resultados.length === 0) {
+      return res.json([
+        {
+          odd_total: 0,
+          picks: [],
+          aviso: "Nenhuma combinação encontrada dentro da faixa de odd"
+        }
+      ])
+    }
 
-    res.json(resultados.slice(0, 5).map(r => ({
-      odd_total: r.odd_total,
-      picks: r.picks
-    })))
+    res.json(resultados.slice(0, 5))
 
   } catch (error) {
     console.log(error.response?.data || error.message)
