@@ -26,11 +26,17 @@ function fixOdd(num) {
 function getBestH2H(bookmakers) {
   let best = []
 
-  (bookmakers || []).forEach(book => {
-    const market = (book.markets || []).find(m => m.key === 'h2h')
-    if (!market) return
+  if (!Array.isArray(bookmakers)) return best
 
-    (market.outcomes || []).forEach(o => {
+  bookmakers.forEach(book => {
+    if (!book || !Array.isArray(book.markets)) return
+
+    const market = book.markets.find(m => m.key === 'h2h')
+    if (!market || !Array.isArray(market.outcomes)) return
+
+    market.outcomes.forEach(o => {
+      if (!o.name || !o.price) return
+
       best.push({
         name: o.name,
         price: o.price
@@ -41,7 +47,6 @@ function getBestH2H(bookmakers) {
   return best
 }
 
-// TESTE
 app.get('/', (req, res) => {
   res.send("API rodando 🚀")
 })
@@ -50,10 +55,9 @@ app.get('/gerar', async (req, res) => {
   try {
     const apiKey = process.env.ODDS_API_KEY
 
-    // 🔥 DEBUG API KEY
     if (!apiKey) {
       return res.status(500).json({
-        erro: "API KEY não configurada no Render"
+        erro: "API KEY não configurada"
       })
     }
 
@@ -71,7 +75,9 @@ app.get('/gerar', async (req, res) => {
       }
     )
 
-    const jogos = (oddsResponse.data || []).slice(0, 6)
+    const jogos = Array.isArray(oddsResponse.data)
+      ? oddsResponse.data.slice(0, 6)
+      : []
 
     let picks = []
 
@@ -102,25 +108,26 @@ app.get('/gerar', async (req, res) => {
               oddsFormat: 'decimal'
             }
           }
-        ).catch(err => {
-          console.log("Erro props:", err.message)
-          return null
-        })
+        ).catch(() => null)
       )
     )
 
     propsRequests.forEach((resp, idx) => {
-      if (!resp) return
+      if (!resp || !resp.data || !Array.isArray(resp.data.bookmakers)) return
 
       const jogo = jogos[idx]
 
-      (resp.data.bookmakers || []).forEach(book => {
-        (book.markets || []).forEach(market => {
-          (market.outcomes || []).forEach(o => {
+      resp.data.bookmakers.forEach(book => {
+        if (!book || !Array.isArray(book.markets)) return
+
+        book.markets.forEach(market => {
+          if (!market || !Array.isArray(market.outcomes)) return
+
+          market.outcomes.forEach(o => {
 
             if (!o.description || !o.point || !o.price) return
 
-            const overUnder = o.name.toLowerCase().includes("over") ? "Over" : "Under"
+            const overUnder = o.name?.toLowerCase().includes("over") ? "Over" : "Under"
 
             picks.push({
               tipo: "player",
@@ -136,12 +143,10 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    // 🔥 GARANTE QUE NÃO QUEBRE
     if (!picks.length) {
       return res.json([])
     }
 
-    // mistura
     picks = picks.sort(() => Math.random() - 0.5)
 
     const resultados = []
@@ -160,7 +165,7 @@ app.get('/gerar', async (req, res) => {
     res.json(resultados)
 
   } catch (error) {
-    console.log("🔥 ERRO DETALHADO:", error.response?.data || error.message)
+    console.log("🔥 ERRO:", error.response?.data || error.message)
 
     res.status(500).json({
       erro: error.response?.data || error.message
@@ -170,4 +175,4 @@ app.get('/gerar', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log("Servidor rodando 🚀")
-})  
+})
