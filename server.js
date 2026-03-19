@@ -1,23 +1,14 @@
-app.get('/', (req, res) => {
-  res.send('API NOVA RODANDO V12 🚀')
-})
 require('dotenv').config()
 const express = require('express')
 const axios = require('axios')
 const cors = require('cors')
 
-const app = express()
+const app = express()   // 🔥 TEM QUE VIR PRIMEIRO
 
-// ✅ CORS LIBERADO (FIX PRINCIPAL)
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
-}))
+app.use(cors())
 
-// =========================
-// HELPERS
-// =========================
+const PORT = process.env.PORT || 3000
+
 function formatStat(stat) {
   if (stat === "player_points") return "Pontos"
   if (stat === "player_rebounds") return "Rebotes"
@@ -33,33 +24,36 @@ function fixOdd(num) {
   return Number(parseFloat(num).toFixed(2))
 }
 
-// =========================
-// PEGAR ODDS DE TIMES
-// =========================
 function getBestH2H(bookmakers) {
-  let odds = []
+  let best = []
 
-  bookmakers.forEach(book => {
-    const market = book.markets.find(m => m.key === 'h2h')
+  (bookmakers || []).forEach(book => {
+    const market = (book.markets || []).find(m => m.key === 'h2h')
     if (!market) return
 
-    market.outcomes.forEach(o => {
-      odds.push({
+    (market.outcomes || []).forEach(o => {
+      best.push({
         name: o.name,
         price: o.price
       })
     })
   })
 
-  return odds
+  return best
 }
 
-// =========================
-// ROTA PRINCIPAL
-// =========================
+app.get('/', (req, res) => {
+  res.send("API rodando 🚀")
+})
+
 app.get('/gerar', async (req, res) => {
   try {
     const apiKey = process.env.ODDS_API_KEY
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "API KEY não configurada" })
+    }
+
     const numLinhas = parseInt(req.query.numLinhas) || 3
 
     const oddsResponse = await axios.get(
@@ -74,15 +68,13 @@ app.get('/gerar', async (req, res) => {
       }
     )
 
-    const jogos = oddsResponse.data.slice(0, 6)
+    const jogos = (oddsResponse.data || []).slice(0, 6)
 
     let picks = []
 
-    // =========================
     // 🟢 TIMES
-    // =========================
     jogos.forEach(jogo => {
-      const odds = getBestH2H(jogo.bookmakers || [])
+      const odds = getBestH2H(jogo.bookmakers)
 
       odds.forEach(o => {
         picks.push({
@@ -94,9 +86,7 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    // =========================
     // 🔵 PLAYER PROPS
-    // =========================
     const propsRequests = await Promise.all(
       jogos.map(jogo =>
         axios.get(
@@ -118,9 +108,9 @@ app.get('/gerar', async (req, res) => {
 
       const jogo = jogos[idx]
 
-      resp.data.bookmakers.forEach(book => {
-        book.markets.forEach(market => {
-          market.outcomes.forEach(o => {
+      (resp.data.bookmakers || []).forEach(book => {
+        (book.markets || []).forEach(market => {
+          (market.outcomes || []).forEach(o => {
 
             if (!o.description || !o.point || !o.price) return
 
@@ -130,6 +120,8 @@ app.get('/gerar', async (req, res) => {
               tipo: "player",
               jogo: `${jogo.home_team} vs ${jogo.away_team}`,
               aposta: `${o.description} ${traduzOU(overUnder)} ${o.point} ${formatStat(market.key)}`,
+              jogador: o.description,
+              linha: o.point,
               odd: fixOdd(o.price)
             })
 
@@ -138,19 +130,12 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    // =========================
-    // GARANTIA
-    // =========================
     if (picks.length < 5) {
       return res.json([])
     }
 
-    // mistura picks
     picks = picks.sort(() => Math.random() - 0.5)
 
-    // =========================
-    // GERAR COMBOS
-    // =========================
     const resultados = []
 
     for (let i = 0; i < 5; i++) {
@@ -167,16 +152,11 @@ app.get('/gerar', async (req, res) => {
     res.json(resultados)
 
   } catch (error) {
-    console.log(error.response?.data || error.message)
+    console.log("ERRO:", error.response?.data || error.message)
     res.status(500).send('Erro ao gerar sugestões')
   }
 })
 
-// =========================
-// START
-// =========================
-const PORT = process.env.PORT || 3000
-
 app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`)
+  console.log("Servidor rodando 🚀")
 })
