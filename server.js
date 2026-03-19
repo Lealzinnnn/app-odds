@@ -170,4 +170,4 @@ app.get('/gerar', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log("Servidor rodando 🚀")
-})
+})  
