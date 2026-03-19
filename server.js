@@ -7,7 +7,7 @@ const app = express()
 app.use(cors())
 
 const PORT = process.env.PORT || 3000
-const BOOKMAKER = "williamhill_us"
+const PREFERRED_BOOK = "williamhill_us"
 
 function fixOdd(num) {
   return Number(parseFloat(num).toFixed(2))
@@ -24,7 +24,6 @@ function formatStat(stat) {
   return stat
 }
 
-// não repetir jogo dentro da bet
 function evitarMesmoJogo(combo) {
   const set = new Set()
   for (const p of combo) {
@@ -34,6 +33,16 @@ function evitarMesmoJogo(combo) {
   return true
 }
 
+// 🔥 ESCOLHE BOOKMAKER INTELIGENTE
+function escolherBookmaker(lista) {
+  if (!lista || !lista.length) return null
+
+  return (
+    lista.find(b => b.key === PREFERRED_BOOK) || // tenta williamhill
+    lista[0] // fallback qualquer
+  )
+}
+
 app.get('/gerar', async (req, res) => {
   try {
 
@@ -41,7 +50,6 @@ app.get('/gerar', async (req, res) => {
     const numLinhas = parseInt(req.query.numLinhas) || 3
     const targetOdd = parseFloat(req.query.targetOdd) || 5
 
-    // 🔥 TODOS OS JOGOS (SEM LIMITAÇÃO)
     const jogosResp = await axios.get(
       'https://api.the-odds-api.com/v4/sports/basketball_nba/odds/',
       {
@@ -60,18 +68,18 @@ app.get('/gerar', async (req, res) => {
     let playerPicks = []
 
     // ======================
-    // 🟢 TIMES (1 POR JOGO)
+    // 🟢 TIMES (COM FALLBACK)
     // ======================
     jogos.forEach(jogo => {
 
-      const book = jogo.bookmakers?.find(b => b.key === BOOKMAKER)
+      const book = escolherBookmaker(jogo.bookmakers)
       if (!book) return
 
       const market = book.markets?.find(m => m.key === 'h2h')
       if (!market) return
 
-      // pega favorito (menor odd)
       const favorito = [...market.outcomes].sort((a, b) => a.price - b.price)[0]
+
       if (!favorito) return
 
       timePicks.push({
@@ -83,7 +91,7 @@ app.get('/gerar', async (req, res) => {
     })
 
     // ======================
-    // 🔵 PLAYER PROPS
+    // 🔵 PLAYER PROPS (COM FALLBACK)
     // ======================
     const props = await Promise.all(
       jogos.map(jogo =>
@@ -106,7 +114,7 @@ app.get('/gerar', async (req, res) => {
       if (!resp?.data?.bookmakers) return
 
       const jogo = jogos[idx]
-      const book = resp.data.bookmakers.find(b => b.key === BOOKMAKER)
+      const book = escolherBookmaker(resp.data.bookmakers)
       if (!book) return
 
       book.markets?.forEach(market => {
@@ -135,7 +143,7 @@ app.get('/gerar', async (req, res) => {
 
     const resultados = []
 
-    // 🔥 CADA COMBO = 1 JOGO DIFERENTE
+    // 🔥 UM COMBO POR JOGO (SEM REPETIÇÃO)
     for (let i = 0; i < timePicks.length; i++) {
 
       const time = timePicks[i]
@@ -160,27 +168,11 @@ app.get('/gerar', async (req, res) => {
       })
     }
 
-    // ordena pelo mais próximo da odd desejada
     resultados.sort((a, b) =>
       Math.abs(a.odd_total - targetOdd) - Math.abs(b.odd_total - targetOdd)
     )
 
-    // 🔥 GARANTE QUE NÃO REPETE JOGO ENTRE RESULTADOS
-    const usados = new Set()
-    const finais = []
-
-    for (const r of resultados) {
-      const jogoPrincipal = r.picks[0].jogo
-
-      if (!usados.has(jogoPrincipal)) {
-        finais.push(r)
-        usados.add(jogoPrincipal)
-      }
-
-      if (finais.length === 5) break
-    }
-
-    res.json(finais)
+    res.json(resultados.slice(0, 5))
 
   } catch (error) {
     console.log(error.response?.data || error.message)
