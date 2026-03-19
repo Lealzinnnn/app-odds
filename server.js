@@ -33,14 +33,10 @@ function evitarMesmoJogo(combo) {
   return true
 }
 
-// 🔥 ESCOLHE BOOKMAKER INTELIGENTE
+// 🔥 fallback inteligente de casa de aposta
 function escolherBookmaker(lista) {
   if (!lista || !lista.length) return null
-
-  return (
-    lista.find(b => b.key === PREFERRED_BOOK) || // tenta williamhill
-    lista[0] // fallback qualquer
-  )
+  return lista.find(b => b.key === PREFERRED_BOOK) || lista[0]
 }
 
 app.get('/gerar', async (req, res) => {
@@ -68,7 +64,7 @@ app.get('/gerar', async (req, res) => {
     let playerPicks = []
 
     // ======================
-    // 🟢 TIMES (COM FALLBACK)
+    // 🟢 TIMES
     // ======================
     jogos.forEach(jogo => {
 
@@ -79,7 +75,6 @@ app.get('/gerar', async (req, res) => {
       if (!market) return
 
       const favorito = [...market.outcomes].sort((a, b) => a.price - b.price)[0]
-
       if (!favorito) return
 
       timePicks.push({
@@ -91,7 +86,7 @@ app.get('/gerar', async (req, res) => {
     })
 
     // ======================
-    // 🔵 PLAYER PROPS (COM FALLBACK)
+    // 🔵 PLAYER PROPS
     // ======================
     const props = await Promise.all(
       jogos.map(jogo =>
@@ -143,11 +138,10 @@ app.get('/gerar', async (req, res) => {
 
     const resultados = []
 
-    // 🔥 UM COMBO POR JOGO (SEM REPETIÇÃO)
+    // 🔥 UM COMBO POR JOGO
     for (let i = 0; i < timePicks.length; i++) {
 
       const time = timePicks[i]
-
       let combo = [time]
 
       let tentativas = 0
@@ -168,11 +162,24 @@ app.get('/gerar', async (req, res) => {
       })
     }
 
-    resultados.sort((a, b) =>
+    // ======================
+    // 🎯 FILTRO DE ODD (±1)
+    // ======================
+    const minOdd = targetOdd - 1
+    const maxOdd = targetOdd + 1
+
+    const filtrados = resultados.filter(r =>
+      r.odd_total >= minOdd && r.odd_total <= maxOdd
+    )
+
+    filtrados.sort((a, b) =>
       Math.abs(a.odd_total - targetOdd) - Math.abs(b.odd_total - targetOdd)
     )
 
-    res.json(resultados.slice(0, 5))
+    // fallback caso não tenha suficiente
+    const finais = filtrados.length >= 3 ? filtrados : resultados
+
+    res.json(finais.slice(0, 5))
 
   } catch (error) {
     console.log(error.response?.data || error.message)
