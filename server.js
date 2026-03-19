@@ -8,8 +8,6 @@ app.use(cors())
 
 const PORT = process.env.PORT || 3000
 
-let lastCall = 0
-
 function formatStat(stat) {
   if (stat === "player_points") return "Pontos"
   if (stat === "player_rebounds") return "Rebotes"
@@ -34,43 +32,14 @@ function evitarMesmoJogo(combo) {
   return true
 }
 
-function getBestH2H(bookmakers) {
-  let best = []
-
-  if (!Array.isArray(bookmakers)) return best
-
-  bookmakers.forEach(book => {
-    const market = book.markets?.find(m => m.key === 'h2h')
-    if (!market) return
-
-    market.outcomes?.forEach(o => {
-      if (!o.name || !o.price) return
-
-      best.push({
-        tipo: "time",
-        aposta: `${o.name} vence`,
-        odd: fixOdd(o.price)
-      })
-    })
-  })
-
-  return best
-}
-
 app.get('/gerar', async (req, res) => {
   try {
 
-    const now = Date.now()
-    if (now - lastCall < 2000) {
-      return res.json({ erro: "Aguarde..." })
-    }
-    lastCall = now
-
     const apiKey = process.env.ODDS_API_KEY
-
     const numLinhas = parseInt(req.query.numLinhas) || 3
     const targetOdd = parseFloat(req.query.targetOdd) || 3
 
+    // 🔥 BUSCA TODOS OS JOGOS DISPONÍVEIS
     const oddsResponse = await axios.get(
       'https://api.the-odds-api.com/v4/sports/basketball_nba/odds/',
       {
@@ -83,24 +52,35 @@ app.get('/gerar', async (req, res) => {
       }
     )
 
-    // 🔥 MAIS JOGOS AGORA
-    const jogos = oddsResponse.data.slice(0, 6)
+    const jogos = oddsResponse.data || []
 
-    let picks = []
+    let timePicks = []
+    let playerPicks = []
 
-    // TIMES
+    // =====================
+    // 🟢 TIMES (FORTE)
+    // =====================
     jogos.forEach(jogo => {
-      const odds = getBestH2H(jogo.bookmakers)
+      jogo.bookmakers?.forEach(book => {
+        const market = book.markets?.find(m => m.key === 'h2h')
+        if (!market) return
 
-      odds.forEach(o => {
-        picks.push({
-          ...o,
-          jogo: `${jogo.home_team} vs ${jogo.away_team}`
+        market.outcomes?.forEach(o => {
+          if (!o.price || !o.name) return
+
+          timePicks.push({
+            tipo: "time",
+            jogo: `${jogo.home_team} vs ${jogo.away_team}`,
+            aposta: `${o.name} vence`,
+            odd: fixOdd(o.price)
+          })
         })
       })
     })
 
-    // 🔥 MAIS STATS (AGORA COMPLETO)
+    // =====================
+    // 🔵 PLAYER PROPS (COMPLETO)
+    // =====================
     const propsRequests = await Promise.all(
       jogos.map(jogo =>
         axios.get(
@@ -128,12 +108,9 @@ app.get('/gerar', async (req, res) => {
 
             if (!o.description || !o.point || !o.price) return
 
-            // 🔥 filtro mais leve
-            if (o.price < 1.3 || o.price > 3) return
+            const overUnder = o.name.toLowerCase().includes("over") ? "Over" : "Under"
 
-            const overUnder = o.name?.toLowerCase().includes("over") ? "Over" : "Under"
-
-            picks.push({
+            playerPicks.push({
               tipo: "player",
               jogo: `${jogo.home_team} vs ${jogo.away_team}`,
               aposta: `${o.description} ${traduzOU(overUnder)} ${o.point} ${formatStat(market.key)}`,
@@ -147,13 +124,32 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    if (!picks.length) return res.json([])
+    if (!timePicks.length && !playerPicks.length) {
+      return res.json([])
+    }
+
+    // 🔥 LIMITA PRA NÃO FICAR LIXO
+    timePicks = timePicks.slice(0, 20)
+    playerPicks = playerPicks.slice(0, 40)
 
     const resultados = []
 
-    for (let i = 0; i < 150; i++) {
-      const embaralhado = picks.sort(() => Math.random() - 0.5)
-      const combo = embaralhado.slice(0, numLinhas)
+    // =====================
+    // 🧠 ENGINE INTELIGENTE
+    // =====================
+    for (let i = 0; i < 200; i++) {
+
+      let combo = []
+
+      // 🔥 SEMPRE COMEÇA COM TIME
+      const time = timePicks[Math.floor(Math.random() * timePicks.length)]
+      combo.push(time)
+
+      // 🔥 COMPLETA COM PLAYERS
+      while (combo.length < numLinhas) {
+        const player = playerPicks[Math.floor(Math.random() * playerPicks.length)]
+        combo.push(player)
+      }
 
       if (!evitarMesmoJogo(combo)) continue
 
@@ -175,6 +171,7 @@ app.get('/gerar', async (req, res) => {
     })))
 
   } catch (error) {
+    console.log(error.response?.data || error.message)
     res.status(500).json({ erro: error.message })
   }
 })
