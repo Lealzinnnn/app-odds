@@ -8,8 +8,6 @@ app.use(cors())
 
 const PORT = process.env.PORT || 3000
 
-const BOOKMAKER = "williamhill_us" // 🔥 AQUI O FILTRO
-
 function fixOdd(num) {
   return Number(parseFloat(num).toFixed(2))
 }
@@ -25,6 +23,7 @@ function formatStat(stat) {
   return stat
 }
 
+// evitar repetir jogo na mesma bet
 function evitarMesmoJogo(combo) {
   const set = new Set()
   for (const p of combo) {
@@ -53,36 +52,34 @@ app.get('/gerar', async (req, res) => {
       }
     )
 
-    const jogos = jogosResp.data.slice(0, 6)
+    const jogos = jogosResp.data.slice(0, 5)
 
     let timePicks = []
     let playerPicks = []
 
     // ======================
-    // 🟢 TIMES (FILTRADO)
+    // 🟢 TIMES
     // ======================
     jogos.forEach(jogo => {
+      jogo.bookmakers?.forEach(book => {
+        const market = book.markets?.find(m => m.key === 'h2h')
+        if (!market) return
 
-      const book = jogo.bookmakers?.find(b => b.key === BOOKMAKER)
-      if (!book) return
+        market.outcomes?.forEach(o => {
+          if (!o.price || !o.name) return
 
-      const market = book.markets?.find(m => m.key === 'h2h')
-      if (!market) return
-
-      market.outcomes?.forEach(o => {
-        if (!o.price || !o.name) return
-
-        timePicks.push({
-          tipo: "time",
-          jogo: `${jogo.home_team} vs ${jogo.away_team}`,
-          aposta: `${o.name} vence`,
-          odd: fixOdd(o.price)
+          timePicks.push({
+            tipo: "time",
+            jogo: `${jogo.home_team} vs ${jogo.away_team}`,
+            aposta: `${o.name} vence`,
+            odd: fixOdd(o.price)
+          })
         })
       })
     })
 
     // ======================
-    // 🔵 PLAYER PROPS (FILTRADO)
+    // 🔵 PLAYER PROPS
     // ======================
     const props = await Promise.all(
       jogos.map(jogo =>
@@ -101,33 +98,30 @@ app.get('/gerar', async (req, res) => {
     )
 
     props.forEach((resp, idx) => {
-
       if (!resp?.data?.bookmakers) return
 
       const jogo = jogos[idx]
 
-      const book = resp.data.bookmakers.find(b => b.key === BOOKMAKER)
-      if (!book) return
+      resp.data.bookmakers.forEach(book => {
+        book.markets?.forEach(market => {
+          market.outcomes?.forEach(o => {
 
-      book.markets?.forEach(market => {
-        market.outcomes?.forEach(o => {
+            if (!o.description || !o.point || !o.price) return
 
-          if (!o.description || !o.point || !o.price) return
+            const overUnder = o.name.toLowerCase().includes("over") ? "Over" : "Under"
 
-          const overUnder = o.name.toLowerCase().includes("over") ? "Over" : "Under"
+            playerPicks.push({
+              tipo: "player",
+              jogo: `${jogo.home_team} vs ${jogo.away_team}`,
+              aposta: `${o.description} ${traduzOU(overUnder)} ${o.point} ${formatStat(market.key)}`,
+              jogador: o.description,
+              linha: o.point,
+              odd: fixOdd(o.price)
+            })
 
-          playerPicks.push({
-            tipo: "player",
-            jogo: `${jogo.home_team} vs ${jogo.away_team}`,
-            aposta: `${o.description} ${traduzOU(overUnder)} ${o.point} ${formatStat(market.key)}`,
-            jogador: o.description,
-            linha: o.point,
-            odd: fixOdd(o.price)
           })
-
         })
       })
-
     })
 
     if (!timePicks.length && !playerPicks.length) {
@@ -137,16 +131,17 @@ app.get('/gerar', async (req, res) => {
     const resultados = []
 
     // ======================
-    // 🧠 COMBOS MISTOS
+    // 🧠 COMBOS (MISTO)
     // ======================
     for (let i = 0; i < 100; i++) {
 
       let combo = []
 
-      // garante 1 time
+      // sempre 1 time
       const time = timePicks[Math.floor(Math.random() * timePicks.length)]
       combo.push(time)
 
+      // completa com players
       while (combo.length < numLinhas) {
         const player = playerPicks[Math.floor(Math.random() * playerPicks.length)]
         combo.push(player)
@@ -162,6 +157,7 @@ app.get('/gerar', async (req, res) => {
       })
     }
 
+    // ordena pelo mais próximo do target
     resultados.sort((a, b) =>
       Math.abs(a.odd_total - targetOdd) - Math.abs(b.odd_total - targetOdd)
     )
