@@ -8,10 +8,10 @@ app.use(cors())
 
 const PORT = process.env.PORT || 3000
 
+let lastCall = 0
+
 function formatStat(stat) {
   if (stat === "player_points") return "Pontos"
-  if (stat === "player_rebounds") return "Rebotes"
-  if (stat === "player_assists") return "Assistências"
   return stat
 }
 
@@ -23,7 +23,7 @@ function fixOdd(num) {
   return Number(parseFloat(num).toFixed(2))
 }
 
-// 🔒 evitar repetir jogo
+// evitar repetir jogo
 function evitarMesmoJogo(combo) {
   const set = new Set()
   for (const p of combo) {
@@ -33,7 +33,7 @@ function evitarMesmoJogo(combo) {
   return true
 }
 
-// pegar odds dos times
+// pegar odds de time
 function getBestH2H(bookmakers) {
   let best = []
 
@@ -45,8 +45,6 @@ function getBestH2H(bookmakers) {
 
     market.outcomes?.forEach(o => {
       if (!o.name || !o.price) return
-
-      // 🔥 filtra odds boas
       if (o.price < 1.3 || o.price > 3) return
 
       best.push({
@@ -65,8 +63,17 @@ app.get('/', (req, res) => {
   res.send("API rodando 🚀")
 })
 
+// rota principal
 app.get('/gerar', async (req, res) => {
   try {
+
+    // 🔒 anti spam (economiza crédito)
+    const now = Date.now()
+    if (now - lastCall < 3000) {
+      return res.json({ erro: "Aguarde alguns segundos..." })
+    }
+    lastCall = now
+
     const apiKey = process.env.ODDS_API_KEY
 
     if (!apiKey) {
@@ -76,6 +83,7 @@ app.get('/gerar', async (req, res) => {
     const numLinhas = parseInt(req.query.numLinhas) || 3
     const targetOdd = parseFloat(req.query.targetOdd) || 3
 
+    // 🔥 CHAMADA PRINCIPAL (TIMES)
     const oddsResponse = await axios.get(
       'https://api.the-odds-api.com/v4/sports/basketball_nba/odds/',
       {
@@ -88,8 +96,9 @@ app.get('/gerar', async (req, res) => {
       }
     )
 
+    // 🔥 MENOS JOGOS = MENOS CUSTO
     const jogos = Array.isArray(oddsResponse.data)
-      ? oddsResponse.data.slice(0, 8)
+      ? oddsResponse.data.slice(0, 3)
       : []
 
     let picks = []
@@ -106,7 +115,7 @@ app.get('/gerar', async (req, res) => {
       })
     })
 
-    // 🔵 PLAYER PROPS
+    // 🔵 PLAYER PROPS (SÓ PONTOS = ECONOMIA)
     const propsRequests = await Promise.all(
       jogos.map(jogo =>
         axios.get(
@@ -115,7 +124,7 @@ app.get('/gerar', async (req, res) => {
             params: {
               apiKey,
               regions: 'us',
-              markets: 'player_points,player_rebounds,player_assists',
+              markets: 'player_points',
               oddsFormat: 'decimal'
             }
           }
@@ -133,8 +142,6 @@ app.get('/gerar', async (req, res) => {
           market.outcomes?.forEach(o => {
 
             if (!o.description || !o.point || !o.price) return
-
-            // 🔥 filtro de qualidade
             if (o.price < 1.4 || o.price > 2.5) return
 
             const overUnder = o.name?.toLowerCase().includes("over") ? "Over" : "Under"
@@ -155,17 +162,16 @@ app.get('/gerar', async (req, res) => {
 
     if (!picks.length) return res.json([])
 
-    // 🔥 gerar combinações inteligentes
     const resultados = []
 
-    for (let i = 0; i < 200; i++) {
+    // 🔥 ENGINE INTELIGENTE
+    for (let i = 0; i < 100; i++) {
       const embaralhado = picks.sort(() => Math.random() - 0.5)
-      const combo = embaralhado.slice(0, numLinhas)
+      let combo = embaralhado.slice(0, numLinhas)
 
       if (!evitarMesmoJogo(combo)) continue
 
       const oddTotal = combo.reduce((acc, p) => acc * p.odd, 1)
-
       const diff = Math.abs(targetOdd - oddTotal)
 
       resultados.push({
@@ -175,7 +181,6 @@ app.get('/gerar', async (req, res) => {
       })
     }
 
-    // 🔥 escolhe as mais próximas da odd desejada
     resultados.sort((a, b) => a.diff - b.diff)
 
     const final = resultados.slice(0, 5).map(r => ({
@@ -186,6 +191,23 @@ app.get('/gerar', async (req, res) => {
     res.json(final)
 
   } catch (error) {
+
+    if (error.response?.data?.error_code === "OUT_OF_USAGE_CREDITS") {
+      return res.json([
+        {
+          odd_total: 3.5,
+          picks: [
+            {
+              tipo: "time",
+              jogo: "Modo demo",
+              aposta: "Sem créditos na API",
+              odd: 1.5
+            }
+          ]
+        }
+      ])
+    }
+
     console.log("🔥 ERRO:", error.response?.data || error.message)
 
     res.status(500).json({
