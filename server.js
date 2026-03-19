@@ -7,6 +7,7 @@ const app = express()
 app.use(cors())
 
 const PORT = process.env.PORT || 3000
+const BOOKMAKER = "williamhill_us"
 
 function fixOdd(num) {
   return Number(parseFloat(num).toFixed(2))
@@ -23,7 +24,7 @@ function formatStat(stat) {
   return stat
 }
 
-// evitar repetir jogo na mesma bet
+// evita repetir jogo dentro da mesma bet
 function evitarMesmoJogo(combo) {
   const set = new Set()
   for (const p of combo) {
@@ -40,6 +41,7 @@ app.get('/gerar', async (req, res) => {
     const numLinhas = parseInt(req.query.numLinhas) || 3
     const targetOdd = parseFloat(req.query.targetOdd) || 5
 
+    // 🔥 TODOS OS JOGOS (sem slice)
     const jogosResp = await axios.get(
       'https://api.the-odds-api.com/v4/sports/basketball_nba/odds/',
       {
@@ -52,29 +54,32 @@ app.get('/gerar', async (req, res) => {
       }
     )
 
-    const jogos = jogosResp.data.slice(0, 5)
+    const jogos = jogosResp.data || []
 
     let timePicks = []
     let playerPicks = []
 
     // ======================
-    // 🟢 TIMES
+    // 🟢 TIMES (1 POR JOGO)
     // ======================
     jogos.forEach(jogo => {
-      jogo.bookmakers?.forEach(book => {
-        const market = book.markets?.find(m => m.key === 'h2h')
-        if (!market) return
 
-        market.outcomes?.forEach(o => {
-          if (!o.price || !o.name) return
+      const book = jogo.bookmakers?.find(b => b.key === BOOKMAKER)
+      if (!book) return
 
-          timePicks.push({
-            tipo: "time",
-            jogo: `${jogo.home_team} vs ${jogo.away_team}`,
-            aposta: `${o.name} vence`,
-            odd: fixOdd(o.price)
-          })
-        })
+      const market = book.markets?.find(m => m.key === 'h2h')
+      if (!market) return
+
+      // 🔥 pega só 1 favorito (evita duplicação)
+      const melhor = market.outcomes.sort((a, b) => a.price - b.price)[0]
+
+      if (!melhor) return
+
+      timePicks.push({
+        tipo: "time",
+        jogo: `${jogo.home_team} vs ${jogo.away_team}`,
+        aposta: `${melhor.name} vence`,
+        odd: fixOdd(melhor.price)
       })
     })
 
@@ -98,50 +103,52 @@ app.get('/gerar', async (req, res) => {
     )
 
     props.forEach((resp, idx) => {
+
       if (!resp?.data?.bookmakers) return
 
       const jogo = jogos[idx]
+      const book = resp.data.bookmakers.find(b => b.key === BOOKMAKER)
+      if (!book) return
 
-      resp.data.bookmakers.forEach(book => {
-        book.markets?.forEach(market => {
-          market.outcomes?.forEach(o => {
+      book.markets?.forEach(market => {
+        market.outcomes?.forEach(o => {
 
-            if (!o.description || !o.point || !o.price) return
+          if (!o.description || !o.point || !o.price) return
 
-            const overUnder = o.name.toLowerCase().includes("over") ? "Over" : "Under"
+          const overUnder = o.name.toLowerCase().includes("over") ? "Over" : "Under"
 
-            playerPicks.push({
-              tipo: "player",
-              jogo: `${jogo.home_team} vs ${jogo.away_team}`,
-              aposta: `${o.description} ${traduzOU(overUnder)} ${o.point} ${formatStat(market.key)}`,
-              jogador: o.description,
-              linha: o.point,
-              odd: fixOdd(o.price)
-            })
-
+          playerPicks.push({
+            tipo: "player",
+            jogo: `${jogo.home_team} vs ${jogo.away_team}`,
+            aposta: `${o.description} ${traduzOU(overUnder)} ${o.point} ${formatStat(market.key)}`,
+            jogador: o.description,
+            linha: o.point,
+            odd: fixOdd(o.price)
           })
+
         })
       })
     })
 
-    if (!timePicks.length && !playerPicks.length) {
+    if (!timePicks.length || !playerPicks.length) {
       return res.json([])
     }
 
     const resultados = []
+    let usados = new Set() // 🔥 evita repetir times entre combos
 
     // ======================
-    // 🧠 COMBOS (MISTO)
+    // 🧠 COMBOS INTELIGENTES
     // ======================
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < timePicks.length; i++) {
 
-      let combo = []
+      const time = timePicks[i]
 
-      // sempre 1 time
-      const time = timePicks[Math.floor(Math.random() * timePicks.length)]
-      combo.push(time)
+      // 🔥 evita repetir o mesmo time em vários combos
+      if (usados.has(time.jogo)) continue
 
-      // completa com players
+      let combo = [time]
+
       while (combo.length < numLinhas) {
         const player = playerPicks[Math.floor(Math.random() * playerPicks.length)]
         combo.push(player)
@@ -155,9 +162,10 @@ app.get('/gerar', async (req, res) => {
         odd_total: fixOdd(total),
         picks: combo
       })
+
+      usados.add(time.jogo)
     }
 
-    // ordena pelo mais próximo do target
     resultados.sort((a, b) =>
       Math.abs(a.odd_total - targetOdd) - Math.abs(b.odd_total - targetOdd)
     )
