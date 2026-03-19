@@ -1,56 +1,72 @@
+app.get('/', (req, res) => {
+  res.send('API NOVA RODANDO V12 🚀')
+})
 require('dotenv').config()
 const express = require('express')
 const axios = require('axios')
 const cors = require('cors')
 
 const app = express()
-app.use(cors())
 
-app.get('/', (req, res) => {
-  res.send('🔥 API HÍBRIDA RODANDO')
-})
+// ✅ CORS LIBERADO (FIX PRINCIPAL)
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}))
 
 // =========================
-// 🔥 GERADOR DE COMBINAÇÕES
+// HELPERS
 // =========================
-function gerarCombinacoes(arr, tamanho) {
-  const resultado = []
+function formatStat(stat) {
+  if (stat === "player_points") return "Pontos"
+  if (stat === "player_rebounds") return "Rebotes"
+  if (stat === "player_assists") return "Assistências"
+  return stat
+}
 
-  function backtrack(inicio, combo) {
-    if (combo.length === tamanho) {
-      resultado.push([...combo])
-      return
-    }
+function traduzOU(tipo) {
+  return tipo === "Over" ? "Mais de" : "Menos de"
+}
 
-    for (let i = inicio; i < arr.length; i++) {
-      combo.push(arr[i])
-      backtrack(i + 1, combo)
-      combo.pop()
-    }
-  }
-
-  backtrack(0, [])
-  return resultado
+function fixOdd(num) {
+  return Number(parseFloat(num).toFixed(2))
 }
 
 // =========================
-// 🔥 ROTA PRINCIPAL
+// PEGAR ODDS DE TIMES
+// =========================
+function getBestH2H(bookmakers) {
+  let odds = []
+
+  bookmakers.forEach(book => {
+    const market = book.markets.find(m => m.key === 'h2h')
+    if (!market) return
+
+    market.outcomes.forEach(o => {
+      odds.push({
+        name: o.name,
+        price: o.price
+      })
+    })
+  })
+
+  return odds
+}
+
+// =========================
+// ROTA PRINCIPAL
 // =========================
 app.get('/gerar', async (req, res) => {
   try {
-    const targetOdd = parseFloat(req.query.targetOdd) || 3
+    const apiKey = process.env.ODDS_API_KEY
     const numLinhas = parseInt(req.query.numLinhas) || 3
 
-    let picks = []
-
-    // =========================
-    // 🟢 ODDS REAIS (TIMES)
-    // =========================
     const oddsResponse = await axios.get(
       'https://api.the-odds-api.com/v4/sports/basketball_nba/odds/',
       {
         params: {
-          apiKey: process.env.ODDS_API_KEY,
+          apiKey,
           regions: 'us',
           markets: 'h2h',
           oddsFormat: 'decimal'
@@ -58,128 +74,109 @@ app.get('/gerar', async (req, res) => {
       }
     )
 
-    oddsResponse.data.forEach(jogo => {
-      const book = jogo.bookmakers[0]
-      if (!book) return
+    const jogos = oddsResponse.data.slice(0, 6)
 
-      const h2h = book.markets.find(m => m.key === 'h2h')
-      if (!h2h) return
+    let picks = []
 
-      h2h.outcomes.forEach(o => {
+    // =========================
+    // 🟢 TIMES
+    // =========================
+    jogos.forEach(jogo => {
+      const odds = getBestH2H(jogo.bookmakers || [])
+
+      odds.forEach(o => {
         picks.push({
           tipo: "time",
           jogo: `${jogo.home_team} vs ${jogo.away_team}`,
           aposta: `${o.name} vence`,
-          odd: o.price,
-          confianca: 65
+          odd: fixOdd(o.price)
         })
       })
     })
 
     // =========================
-    // 🟡 PLAYER PROPS (CORRIGIDO)
+    // 🔵 PLAYER PROPS
     // =========================
-    const statsResponse = await axios.get(
-      'https://api.sportsgameodds.com/v2/events',
-      {
-        params: {
-          apiKey: process.env.SPORTS_API_KEY,
-          leagueID: 'NBA'
-        }
-      }
+    const propsRequests = await Promise.all(
+      jogos.map(jogo =>
+        axios.get(
+          `https://api.the-odds-api.com/v4/sports/basketball_nba/events/${jogo.id}/odds`,
+          {
+            params: {
+              apiKey,
+              regions: 'us',
+              markets: 'player_points,player_rebounds,player_assists',
+              oddsFormat: 'decimal'
+            }
+          }
+        ).catch(() => null)
+      )
     )
 
-    const eventos = statsResponse.data.data || []
+    propsRequests.forEach((resp, idx) => {
+      if (!resp) return
 
-    eventos.forEach(evento => {
-      const players = evento.players || {}
+      const jogo = jogos[idx]
 
-      Object.values(players).forEach(player => {
+      resp.data.bookmakers.forEach(book => {
+        book.markets.forEach(market => {
+          market.outcomes.forEach(o => {
 
-        if (!player.name) return
+            if (!o.description || !o.point || !o.price) return
 
-        // 🔥 PONTOS
-        if (player.points && player.points >= 20) {
-          picks.push({
-            tipo: "player",
-            jogo: evento.teams?.map(t => t.name).join(' vs '),
-            aposta: `${player.name} +20 pontos`,
-            odd: 1.7,
-            confianca: 70
+            const overUnder = o.name.toLowerCase().includes("over") ? "Over" : "Under"
+
+            picks.push({
+              tipo: "player",
+              jogo: `${jogo.home_team} vs ${jogo.away_team}`,
+              aposta: `${o.description} ${traduzOU(overUnder)} ${o.point} ${formatStat(market.key)}`,
+              odd: fixOdd(o.price)
+            })
+
           })
-        }
-
-        // 🔥 ASSISTÊNCIAS
-        if (player.assists && player.assists >= 5) {
-          picks.push({
-            tipo: "player",
-            jogo: evento.teams?.map(t => t.name).join(' vs '),
-            aposta: `${player.name} +5 assistências`,
-            odd: 1.6,
-            confianca: 65
-          })
-        }
-
-        // 🔥 REBOTES
-        if (player.rebounds && player.rebounds >= 8) {
-          picks.push({
-            tipo: "player",
-            jogo: evento.teams?.map(t => t.name).join(' vs '),
-            aposta: `${player.name} +8 rebotes`,
-            odd: 1.65,
-            confianca: 68
-          })
-        }
-
+        })
       })
     })
 
     // =========================
-    // 🔥 FILTRAR PICKS
+    // GARANTIA
     // =========================
-    picks = picks
-      .filter(p => p.odd >= 1.4 && p.odd <= 3)
-      .sort((a, b) => b.confianca - a.confianca)
-      .slice(0, 25)
-
-    // =========================
-    // 🔥 GERAR COMBINAÇÕES
-    // =========================
-    const combinacoes = gerarCombinacoes(picks, numLinhas)
-
-    let melhorCombo = null
-    let menorDiff = Infinity
-
-    for (const combo of combinacoes) {
-      const oddTotal = combo.reduce((acc, p) => acc * p.odd, 1)
-      const diff = Math.abs(targetOdd - oddTotal)
-
-      if (diff < menorDiff) {
-        menorDiff = diff
-
-        melhorCombo = {
-          odd_total: oddTotal.toFixed(2),
-          confianca: Math.round(
-            combo.reduce((acc, p) => acc + p.confianca, 0) / combo.length
-          ),
-          picks: combo
-        }
-      }
+    if (picks.length < 5) {
+      return res.json([])
     }
 
-    res.json(melhorCombo)
+    // mistura picks
+    picks = picks.sort(() => Math.random() - 0.5)
+
+    // =========================
+    // GERAR COMBOS
+    // =========================
+    const resultados = []
+
+    for (let i = 0; i < 5; i++) {
+      const combo = picks.slice(i, i + numLinhas)
+
+      const oddTotal = combo.reduce((acc, p) => acc * p.odd, 1)
+
+      resultados.push({
+        odd_total: fixOdd(oddTotal),
+        picks: combo
+      })
+    }
+
+    res.json(resultados)
 
   } catch (error) {
-    console.log("ERRO:", error.response?.data || error.message)
-    res.status(500).json({
-      erro: "Erro ao gerar sugestões",
-      detalhe: error.response?.data || error.message
-    })
+    console.log(error.response?.data || error.message)
+    res.status(500).send('Erro ao gerar sugestões')
   }
 })
 
+// =========================
+// START
+// =========================
 const PORT = process.env.PORT || 3000
 
 app.listen(PORT, () => {
-  console.log(`🚀 Rodando na porta ${PORT}`)
+  console.log(`Servidor rodando na porta ${PORT}`)
 })
