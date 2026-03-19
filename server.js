@@ -12,34 +12,32 @@ function fixOdd(num) {
   return Number(parseFloat(num).toFixed(2))
 }
 
-function formatStat(stat) {
-  if (stat.includes("points")) return "Pontos"
-  if (stat.includes("rebounds")) return "Rebotes"
-  if (stat.includes("assists")) return "Assistências"
-  return stat
-}
-
 function traduzOU(name) {
-  return name.toLowerCase().includes("over") ? "Mais de" : "Menos de"
+  return name?.toLowerCase().includes("over") ? "Mais de" : "Menos de"
 }
 
+function formatStat(stat) {
+  if (!stat) return ""
+  return stat
+    .replace("player_", "")
+    .replace("_", " ")
+}
+
+// =========================
+// ROTA PRINCIPAL
+// =========================
 app.get('/gerar', async (req, res) => {
   try {
 
     const apiKey = process.env.ODDS_API_KEY
-    const numLinhas = parseInt(req.query.numLinhas) || 3
-    const targetOdd = parseFloat(req.query.targetOdd) || 5.5
 
-    const MIN = targetOdd - 1
-    const MAX = targetOdd + 1
-
-    // 🔥 1. TODOS OS JOGOS + MERCADOS
+    // 🔥 TODOS OS JOGOS + TODOS MERCADOS BASE
     const oddsResponse = await axios.get(
       'https://api.the-odds-api.com/v4/sports/basketball_nba/odds',
       {
         params: {
           apiKey,
-          regions: 'us',
+          regions: 'us,eu,uk', // 🔥 MAIS DADOS
           markets: 'h2h,spreads,totals',
           oddsFormat: 'decimal'
         }
@@ -51,9 +49,11 @@ app.get('/gerar', async (req, res) => {
     let picks = []
 
     // =========================
-    // 🟢 TIMES + SPREAD + TOTAL
+    // 🟢 TIMES + TODOS MERCADOS
     // =========================
     jogos.forEach(jogo => {
+
+      const jogoNome = `${jogo.home_team} vs ${jogo.away_team}`
 
       jogo.bookmakers?.forEach(book => {
 
@@ -65,9 +65,10 @@ app.get('/gerar', async (req, res) => {
 
             picks.push({
               tipo: "time",
-              jogo: `${jogo.home_team} vs ${jogo.away_team}`,
-              aposta: `${o.name} ${market.key}${o.point ? ` (${o.point})` : ""}`,
-              odd: fixOdd(o.price)
+              jogo: jogoNome,
+              aposta: `${o.name} (${market.key}${o.point ? " " + o.point : ""})`,
+              odd: fixOdd(o.price),
+              bookmaker: book.key
             })
 
           })
@@ -79,7 +80,7 @@ app.get('/gerar', async (req, res) => {
     })
 
     // =========================
-    // 🔵 PLAYER PROPS COMPLETO
+    // 🔵 PLAYER PROPS (TODOS POSSÍVEIS)
     // =========================
     const propsRequests = await Promise.all(
       jogos.map(jogo =>
@@ -88,7 +89,7 @@ app.get('/gerar', async (req, res) => {
           {
             params: {
               apiKey,
-              regions: 'us',
+              regions: 'us,eu,uk',
               markets: `
                 player_points,
                 player_rebounds,
@@ -109,6 +110,7 @@ app.get('/gerar', async (req, res) => {
       if (!resp?.data?.bookmakers) return
 
       const jogo = jogos[idx]
+      const jogoNome = `${jogo.home_team} vs ${jogo.away_team}`
 
       resp.data.bookmakers.forEach(book => {
 
@@ -120,10 +122,12 @@ app.get('/gerar', async (req, res) => {
 
             picks.push({
               tipo: "player",
-              jogo: `${jogo.home_team} vs ${jogo.away_team}`,
+              jogo: jogoNome,
               aposta: `${o.description} ${traduzOU(o.name)} ${o.point || ""} ${formatStat(market.key)}`,
               jogador: o.description,
-              odd: fixOdd(o.price)
+              linha: o.point,
+              odd: fixOdd(o.price),
+              bookmaker: book.key
             })
 
           })
@@ -134,33 +138,13 @@ app.get('/gerar', async (req, res) => {
 
     })
 
-    if (!picks.length) {
-      return res.json({ erro: "Sem dados da API" })
-    }
-
     // =========================
-    // 🎯 GERAR COMBOS COM ODD CONTROLADA
+    // RETORNO BRUTO (SEM LIMITAÇÃO)
     // =========================
-    const resultados = []
-
-    for (let i = 0; i < 800; i++) {
-
-      const combo = [...picks]
-        .sort(() => Math.random() - 0.5)
-        .slice(0, numLinhas)
-
-      const total = combo.reduce((acc, p) => acc * p.odd, 1)
-
-      if (total >= MIN && total <= MAX) {
-        resultados.push({
-          odd_total: fixOdd(total),
-          picks: combo
-        })
-      }
-
-    }
-
-    res.json(resultados.slice(0, 10))
+    res.json({
+      total_picks: picks.length,
+      dados: picks
+    })
 
   } catch (error) {
     console.log(error.response?.data || error.message)
